@@ -1,0 +1,26 @@
+{
+  "jep": "1",
+  "verb": "J",
+  "who": "did:example:agent-789",
+  "when": 1742345700,
+  "what": {
+    "claim": "chain break declared",
+    "reason": "parent unavailable"
+  },
+  "nonce": "33333333-3333-4333-8333-333333333333",
+  "aud": "https://platform.example.com",
+  "ref": null,
+  "ext": {
+    "https://jac.org/chain": {
+      "based_on": null,
+      "based_on_type": "declared-break",
+      "relation": "declared-break",
+      "observed_log_assumption": "partial",
+      "note": "Parent event unavailable in observed log."
+    }
+  },
+  "ext_crit": [
+    "https://jac.org/chain"
+  ],
+  "sig": "PLACEHOLDER_DETACHED_JWS"
+}

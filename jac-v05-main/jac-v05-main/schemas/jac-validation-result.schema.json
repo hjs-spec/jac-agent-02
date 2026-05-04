@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jac.org/schemas/jac-validation-result-0.5.schema.json",
+  "title": "JAC Validation Result",
+  "type": "object",
+  "required": [
+    "valid",
+    "profile",
+    "errors",
+    "warnings"
+  ],
+  "properties": {
+    "valid": {
+      "type": "boolean"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "extension": {
+      "type": "string"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jac.org/schemas/jac-chain-extension-0.5.schema.json",
+  "title": "JAC Chain Extension",
+  "type": "object",
+  "required": [
+    "based_on_type",
+    "relation"
+  ],
+  "properties": {
+    "based_on": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "based_on_type": {
+      "type": "string",
+      "enum": [
+        "jep-event",
+        "hjs-behavior-record",
+        "hjs-receipt-manifest",
+        "hjs-receipt-bundle",
+        "external-digest",
+        "declared-break",
+        "chain-root"
+      ]
+    },
+    "relation": {
+      "type": "string",
+      "enum": [
+        "derived-from",
+        "delegated-from",
+        "verified-by",
+        "terminated-by",
+        "supersedes",
+        "declared-break",
+        "chain-root",
+        "depends-on",
+        "caused-by",
+        "context-for"
+      ]
+    },
+    "observed_log_assumption": {
+      "type": "string",
+      "enum": [
+        "partial",
+        "complete",
+        "unspecified"
+      ]
+    },
+    "chain_id": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

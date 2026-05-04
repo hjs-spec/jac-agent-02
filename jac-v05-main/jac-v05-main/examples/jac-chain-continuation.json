@@ -1,0 +1,22 @@
+{
+  "jep": "1",
+  "verb": "J",
+  "who": "did:example:agent-789",
+  "when": 1742345690,
+  "what": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "nonce": "22222222-2222-4222-8222-222222222222",
+  "aud": "https://platform.example.com",
+  "ref": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "ext": {
+    "https://jac.org/chain": {
+      "based_on": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "based_on_type": "jep-event",
+      "relation": "delegated-from",
+      "observed_log_assumption": "partial"
+    }
+  },
+  "ext_crit": [
+    "https://jac.org/chain"
+  ],
+  "sig": "PLACEHOLDER_DETACHED_JWS"
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jac.org/schemas/jac-chain-fragment-0.5.schema.json",
+  "title": "JAC Chain Fragment",
+  "type": "object",
+  "required": [
+    "jac",
+    "type",
+    "event_count",
+    "events"
+  ],
+  "properties": {
+    "jac": {
+      "type": "string",
+      "const": "0.5"
+    },
+    "type": {
+      "type": "string",
+      "const": "chain-fragment"
+    },
+    "event_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "fragment_hash": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}
