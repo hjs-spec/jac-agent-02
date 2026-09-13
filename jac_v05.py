@@ -1,54 +1,125 @@
-"""JAC v0.5 implementation seed.
+"""JAC 0.5 declared-dependency helpers over Core 0.6 event containers.
 
-This module provides a small JEP-compatible declared dependency chain
-extension implementation aligned with draft-wang-jac-02.
-
-It intentionally does not implement full JEP signing or HJS receipt
-validation. It only builds and validates JAC extension structures and
-chain fragments.
+This module validates JAC declarations, not Core signatures, authority,
+external causality, parent availability or complete logging.
 """
 
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import dataclass, asdict
 import hashlib
 import json
+from pathlib import Path
+import re
 import time
-from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
+import uuid
+
+from jsonschema import Draft202012Validator
+import rfc8785
 
 JAC_CHAIN_EXT = "https://jac.org/chain"
+CANONICALIZATION = "rfc8785"
+SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
+CHAIN_SCHEMA = json.loads((SCHEMA_DIR / "jac-chain-extension.schema.json").read_text())
+CHAIN_VALIDATOR = Draft202012Validator(CHAIN_SCHEMA)
+FRAGMENT_VALIDATOR = Draft202012Validator(
+    json.loads((SCHEMA_DIR / "jac-chain-fragment.schema.json").read_text())
+)
+ALLOWED_BASED_ON_TYPES = set(CHAIN_SCHEMA["properties"]["based_on_type"]["enum"])
+ALLOWED_RELATIONS = set(CHAIN_SCHEMA["properties"]["relation"]["enum"])
 
-ALLOWED_BASED_ON_TYPES = {
-    "jep-event",
-    "hjs-behavior-record",
-    "hjs-receipt-manifest",
-    "hjs-receipt-bundle",
-    "external-digest",
-    "declared-break",
-    "chain-root",
-}
 
-ALLOWED_RELATIONS = {
-    "derived-from",
-    "delegated-from",
-    "verified-by",
-    "terminated-by",
-    "supersedes",
-    "declared-break",
-    "chain-root",
-    "depends-on",
-    "caused-by",
-    "context-for",
-}
+def _json_value(value):
+    """Reject Python-only values before a serializer can coerce them."""
+    if value is None or type(value) in (str, bool, int, float):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _json_value(item)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("JSON object keys must be strings")
+            _json_value(item)
+        return
+    raise ValueError("Only JSON values are supported")
 
 
 def jcs_seed(obj: Any) -> bytes:
-    """JCS-compatible canonicalization for simple seed objects."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    """RFC 8785 bytes, including ECMAScript numbers and UTF-16 key ordering."""
+    _json_value(obj)
+    return rfc8785.dumps(obj)
 
 
 def digest(obj: Any) -> str:
     return "sha256:" + hashlib.sha256(jcs_seed(obj)).hexdigest()
+
+
+def legacy_digest(obj: Any) -> str:
+    """Explicit historical json-sorted-v1 digest; never used for new output."""
+    _json_value(obj)
+    payload = json.dumps(
+        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _error(code, message):
+    return {"code": code, "message": message}
+
+
+def _digest_reference(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9-]+:[0-9a-f]+", value):
+        return False
+    algorithm, hexdigest = value.split(":", 1)
+    return len(hexdigest) % 2 == 0 and (algorithm != "sha256" or len(hexdigest) == 64)
+
+
+def _chain_errors(chain):
+    errors = [
+        _error("ERR_JAC_EXTENSION_SCHEMA", e.message)
+        for e in CHAIN_VALIDATOR.iter_errors(chain)
+    ]
+    if errors:
+        return errors
+    kind, relation, parent = (
+        chain["based_on_type"],
+        chain["relation"],
+        chain.get("based_on"),
+    )
+    for declaration in ("chain-root", "declared-break"):
+        if (kind == declaration) != (relation == declaration):
+            errors.append(
+                _error(
+                    "ERR_JAC_DECLARATION_MISMATCH",
+                    f"{declaration} type and relation must agree",
+                )
+            )
+    if kind == "chain-root" and parent is not None:
+        errors.append(
+            _error(
+                "ERR_JAC_ROOT_HAS_PARENT",
+                "A declared root cannot also declare a parent",
+            )
+        )
+    if kind not in {"chain-root", "declared-break"} and parent is None:
+        errors.append(
+            _error(
+                "ERR_JAC_PARENT_MISSING",
+                "Non-root, non-break declarations require based_on",
+            )
+        )
+    if parent is not None and not _digest_reference(parent):
+        errors.append(
+            _error(
+                "ERR_JAC_PARENT_DIGEST_INVALID",
+                "based_on must be an algorithm-tagged lowercase hex digest; sha256 requires 64 digits",
+            )
+        )
+    return errors
 
 
 @dataclass
@@ -61,8 +132,12 @@ class JACChainExtension:
     note: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        data = asdict(self)
-        return {k: v for k, v in data.items() if v is not None}
+        data = {k: v for k, v in asdict(self).items() if v is not None}
+        jcs_seed(data)
+        errors = _chain_errors(data)
+        if errors:
+            raise ValueError(json.dumps(errors))
+        return data
 
 
 def make_chain_extension(
@@ -73,31 +148,59 @@ def make_chain_extension(
     chain_id: Optional[str] = None,
     note: Optional[str] = None,
 ) -> Dict[str, Any]:
-    ext = JACChainExtension(
-        based_on=based_on,
-        based_on_type=based_on_type,
-        relation=relation,
-        observed_log_assumption=observed_log_assumption,
-        chain_id=chain_id,
-        note=note,
-    )
-    return ext.to_dict()
+    return JACChainExtension(
+        based_on, based_on_type, relation, observed_log_assumption, chain_id, note
+    ).to_dict()
+
+
+def _container_errors(event):
+    if not isinstance(event, dict):
+        return [_error("ERR_JAC_EVENT_TYPE", "Event must be an object")]
+    if not isinstance(event.get("ext", {}), dict):
+        return [_error("ERR_JAC_EXT_TYPE", "ext must be an object")]
+    critical = event.get("ext_crit", [])
+    if not isinstance(critical, list) or not all(
+        isinstance(x, str) and x for x in critical
+    ):
+        return [
+            _error(
+                "ERR_JAC_EXT_CRIT_TYPE",
+                "ext_crit must be an array of non-empty strings",
+            )
+        ]
+    if len(critical) != len(set(critical)):
+        return [_error("ERR_JAC_EXT_CRIT_TYPE", "ext_crit entries must be unique")]
+    if any(key not in event.get("ext", {}) for key in critical):
+        return [
+            _error(
+                "ERR_JAC_CRITICAL_EXTENSION_MISSING",
+                "Each ext_crit entry must exist in ext",
+            )
+        ]
+    return []
 
 
 def attach_jac_chain_extension(
-    event: Dict[str, Any],
-    chain_ext: Dict[str, Any],
-    critical: bool = True,
+    event: Dict[str, Any], chain_ext: Dict[str, Any], critical: bool = True
 ) -> Dict[str, Any]:
-    """Attach JAC chain extension using JEP ext/ext_crit."""
-    out = dict(event)
-    out.setdefault("ext", {})
-    out["ext"][JAC_CHAIN_EXT] = chain_ext
+    """Return a copy. Attach before signing; never silently invalidate a signature."""
+    jcs_seed(event)
+    jcs_seed(chain_ext)
+    errors = _container_errors(event) + _chain_errors(chain_ext)
+    if errors:
+        raise ValueError(json.dumps(errors))
+    if type(critical) is not bool:
+        raise ValueError("critical must be a boolean")
+    if "sig" in event and event["sig"] != "UNSIGNED-DEMO":
+        raise ValueError("Attach extensions to an unsigned event, then sign the result")
+    if JAC_CHAIN_EXT in event.get("ext", {}):
+        raise ValueError(
+            "JAC extension already exists; build a new unsigned event to replace it"
+        )
+    out = deepcopy(event)
+    out.setdefault("ext", {})[JAC_CHAIN_EXT] = deepcopy(chain_ext)
     if critical:
-        ext_crit = list(out.get("ext_crit", []))
-        if JAC_CHAIN_EXT not in ext_crit:
-            ext_crit.append(JAC_CHAIN_EXT)
-        out["ext_crit"] = ext_crit
+        out.setdefault("ext_crit", []).append(JAC_CHAIN_EXT)
     return out
 
 
@@ -112,148 +215,217 @@ def make_jep_like_event(
     aud: str = "https://example.org",
     ref: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create an unsigned JEP-like event with a JAC chain extension.
-
-    This is a seed/demo helper, not a production JEP signer.
-    """
+    """Build an explicitly UNSIGNED-DEMO container; this is not a Core signer."""
+    if not isinstance(verb, str) or verb not in {"J", "D", "T", "V"}:
+        raise ValueError("Unsupported Core verb")
+    if (
+        not isinstance(who, str)
+        or not who.strip()
+        or not isinstance(aud, str)
+        or not aud
+    ):
+        raise ValueError("who and aud must be non-empty strings")
+    if not isinstance(what, dict) and not _digest_reference(what):
+        raise ValueError("what must be an object or a digest")
+    if ref is not None and not _digest_reference(ref):
+        raise ValueError("ref must be a digest or null")
     event = {
         "jep": "1",
         "verb": verb,
         "who": who,
         "when": int(time.time()),
-        "what": what,
-        "nonce": "00000000-0000-4000-8000-000000000000",
+        "what": deepcopy(what),
+        "nonce": str(uuid.uuid4()),
         "aud": aud,
         "ref": ref,
         "sig": "UNSIGNED-DEMO",
     }
     chain_ext = make_chain_extension(
-        based_on=based_on,
-        based_on_type=based_on_type,
-        relation=relation,
-        observed_log_assumption=observed_log_assumption,
+        based_on, based_on_type, relation, observed_log_assumption
     )
     return attach_jac_chain_extension(event, chain_ext)
 
 
 class JACChainValidator:
-    """Minimal JAC chain extension validator."""
+    """Validate declarations only; valid does not mean cryptographically verified."""
 
     def validate_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        errors: List[Dict[str, Any]] = []
-        warnings: List[Dict[str, Any]] = []
-
-        ext = event.get("ext", {})
-        chain = ext.get(JAC_CHAIN_EXT)
-
-        if not chain:
-            errors.append({
-                "code": "ERR_JAC_CHAIN_EXTENSION_MISSING",
-                "message": "Missing https://jac.org/chain extension.",
-            })
+        try:
+            jcs_seed(event)
+        except (ValueError, TypeError, RecursionError) as exc:
+            return self._result(False, [_error("ERR_JAC_JSON", str(exc))], [])
+        errors = _container_errors(event)
+        warnings = []
+        if errors:
             return self._result(False, errors, warnings)
-
-        based_on_type = chain.get("based_on_type")
-        relation = chain.get("relation")
-
-        if based_on_type not in ALLOWED_BASED_ON_TYPES:
-            errors.append({
-                "code": "ERR_JAC_BASED_ON_TYPE_UNSUPPORTED",
-                "message": f"Unsupported based_on_type: {based_on_type}",
-            })
-
-        if relation not in ALLOWED_RELATIONS:
-            errors.append({
-                "code": "ERR_JAC_RELATION_UNSUPPORTED",
-                "message": f"Unsupported relation: {relation}",
-            })
-
-        if relation != "chain-root" and based_on_type != "chain-root" and not chain.get("based_on"):
-            errors.append({
-                "code": "ERR_JAC_PARENT_MISSING",
-                "message": "Non-root JAC chain events require based_on.",
-            })
-
+        ext = event.get("ext", {})
+        if JAC_CHAIN_EXT not in ext:
+            errors.append(
+                _error(
+                    "ERR_JAC_CHAIN_EXTENSION_MISSING",
+                    "Missing https://jac.org/chain extension",
+                )
+            )
+        else:
+            errors.extend(_chain_errors(ext[JAC_CHAIN_EXT]))
         if JAC_CHAIN_EXT not in event.get("ext_crit", []):
-            warnings.append({
-                "code": "WARN_JAC_CHAIN_NOT_CRITICAL",
-                "message": "JAC chain extension is not listed in ext_crit.",
-            })
-
-        return self._result(len(errors) == 0, errors, warnings)
+            warnings.append(
+                _error(
+                    "WARN_JAC_CHAIN_NOT_CRITICAL",
+                    "JAC chain extension is not listed in ext_crit",
+                )
+            )
+        return self._result(not errors, errors, warnings)
 
     def validate_fragment(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
-        results = [self.validate_event(e) for e in events]
-        valid = all(r["valid"] for r in results)
+        if not isinstance(events, list) or not events:
+            return {
+                **self._result(
+                    False,
+                    [
+                        _error(
+                            "ERR_JAC_FRAGMENT_INPUT",
+                            "A non-empty event array is required",
+                        )
+                    ],
+                    [],
+                ),
+                "event_count": len(events) if isinstance(events, list) else 0,
+                "results": [],
+                "observed_log_assumption": "unspecified",
+            }
+        results = [self.validate_event(event) for event in events]
+        valid = all(result["valid"] for result in results)
         return {
-            "valid": valid,
+            **self._result(
+                valid,
+                (
+                    []
+                    if valid
+                    else [
+                        _error(
+                            "ERR_JAC_FRAGMENT_INVALID",
+                            "One or more declarations are invalid",
+                        )
+                    ]
+                ),
+                [],
+            ),
             "event_count": len(events),
             "results": results,
-            "observed_log_assumption": self._infer_observed_log_assumption(events),
+            "observed_log_assumption": (
+                self._infer_observed_log_assumption(events) if valid else "unspecified"
+            ),
         }
 
-    def _infer_observed_log_assumption(self, events: List[Dict[str, Any]]) -> str:
-        assumptions = []
-        for event in events:
-            chain = event.get("ext", {}).get(JAC_CHAIN_EXT, {})
-            if "observed_log_assumption" in chain:
-                assumptions.append(chain["observed_log_assumption"])
+    def _infer_observed_log_assumption(self, events):
+        assumptions = [
+            event["ext"][JAC_CHAIN_EXT].get("observed_log_assumption", "unspecified")
+            for event in events
+        ]
         if "partial" in assumptions:
             return "partial"
-        if "complete" in assumptions:
-            return "complete"
-        return "unspecified"
+        return (
+            "complete" if all(a == "complete" for a in assumptions) else "unspecified"
+        )
 
-    def _result(self, valid: bool, errors: List[Dict[str, Any]], warnings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _result(self, valid, errors, warnings):
         return {
             "valid": valid,
             "profile": "jac-v0.5",
             "extension": JAC_CHAIN_EXT,
+            "scopes": ["jac_extension_structure"] if valid else [],
+            "core_verified": False,
+            "references_verified": False,
+            "log_completeness_verified": False,
             "errors": errors,
             "warnings": warnings,
         }
 
 
 def export_chain_fragment(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    result = JACChainValidator().validate_fragment(events)
+    if not result["valid"]:
+        raise ValueError(json.dumps(result))
+    snapshot = deepcopy(events)
     return {
         "jac": "0.5",
         "type": "chain-fragment",
-        "event_count": len(events),
-        "events": events,
-        "fragment_hash": digest(events),
+        "canonicalization": CANONICALIZATION,
+        "event_count": len(snapshot),
+        "events": snapshot,
+        "fragment_hash": digest(snapshot),
     }
+
+
+def verify_fragment_hash(fragment, *, canonicalization="rfc8785"):
+    """Check exported hash binding only; legacy mode must be explicitly requested."""
+    try:
+        if canonicalization not in {"rfc8785", "json-sorted-v1"}:
+            raise ValueError("Unknown canonicalization")
+        _json_value(fragment)
+        errors = list(FRAGMENT_VALIDATOR.iter_errors(fragment))
+        if errors:
+            raise ValueError(errors[0].message)
+        declared = fragment.get("canonicalization")
+        if declared is not None and declared != canonicalization:
+            raise ValueError("Declared canonicalization differs from requested mode")
+        if type(fragment["event_count"]) is not int or fragment["event_count"] != len(
+            fragment["events"]
+        ):
+            raise ValueError("event_count does not match events")
+        if "fragment_hash" not in fragment:
+            raise ValueError("fragment_hash is required for hash verification")
+        expected = (digest if canonicalization == "rfc8785" else legacy_digest)(
+            fragment["events"]
+        )
+        if fragment["fragment_hash"] != expected:
+            raise ValueError("Fragment hash mismatch")
+        return {
+            "valid": True,
+            "scopes": ["fragment_hash_binding"],
+            "canonicalization": canonicalization,
+            "core_verified": False,
+            "references_verified": False,
+        }
+    except (ValueError, TypeError, KeyError, RecursionError) as exc:
+        return {
+            "valid": False,
+            "scopes": [],
+            "errors": [_error("ERR_JAC_FRAGMENT_HASH", str(exc))],
+        }
 
 
 def demo() -> Dict[str, Any]:
     root = make_jep_like_event(
-        verb="D",
-        who="did:example:human-123",
-        what={"claim": "delegate", "scope": "summarize-document"},
-        based_on=None,
+        "D",
+        "did:example:human-123",
+        {
+            "claim": "delegate",
+            "delegatee": "did:example:agent-789",
+            "scope": "summarize-document",
+        },
         based_on_type="chain-root",
         relation="chain-root",
     )
     root_hash = digest(root)
-
     judgment = make_jep_like_event(
-        verb="J",
-        who="did:example:agent-789",
-        what="sha256:" + "a" * 64,
+        "J",
+        "did:example:agent-789",
+        "sha256:" + "a" * 64,
         based_on=root_hash,
-        based_on_type="jep-event",
         relation="delegated-from",
+        ref=root_hash,
     )
     judgment_hash = digest(judgment)
-
     verification = make_jep_like_event(
-        verb="V",
-        who="did:example:verifier-123",
-        what={"verification_scope": ["syntax", "cryptographic"]},
+        "V",
+        "did:example:verifier-123",
+        {"verification_scope": ["syntax", "cryptographic"]},
         based_on=judgment_hash,
-        based_on_type="jep-event",
         relation="verified-by",
+        ref=judgment_hash,
     )
-
     fragment = export_chain_fragment([root, judgment, verification])
     fragment["validation"] = JACChainValidator().validate_fragment(fragment["events"])
     return fragment
