@@ -1,3 +1,8 @@
+"""Historical v0.4/JAC-01 prototype; preserved for old trace reproduction.
+
+Use jac_v05.py for current declarations. This module's sorted-JSON hashes and
+placeholder signatures are not Core 0.6 conformance or verification evidence.
+"""
 import hashlib
 import json
 import os
@@ -7,11 +12,11 @@ import threading
 from datetime import datetime
 from typing import List, Dict, Optional
 
-# 100% 遵循三份IETF草案
+# 历史原型参考以下早期草案；不声明完整协议符合性
 # draft-wang-jep-judgment-event-protocol-04
 # draft-wang-hjs-accountability-04
 # draft-wang-jac-01
-# 无自定义字段 | 无杜撰逻辑 | 高性能训练适配
+# 保留旧版字段与哈希，便于复现历史演示
 
 class JacAgentTraceCore:
     def __init__(self):
@@ -30,7 +35,7 @@ class JacAgentTraceCore:
         self.async_lock = threading.Lock()
 
     # ------------------------------
-    # 协议标准哈希：RFC8785 + RFC9122
+    # 历史 sorted-JSON 哈希；不是 RFC 8785，保留旧字节兼容性
     # ------------------------------
     def _canon_hash(self, data: dict) -> str:
         canon = json.dumps(data, sort_keys=True, ensure_ascii=False)
@@ -47,10 +52,10 @@ class JacAgentTraceCore:
 
     def disable_training_mode(self):
         self.training_mode = False
-        print("✅ JAC Standard Mode ON: full audit compliance")
+        print("✅ JAC Standard Mode ON: historical trace mode")
 
     # ------------------------------
-    # 核心事件生成（纯协议，无杜撰）
+    # 历史演示事件生成（包含原型自定义字段）
     # ------------------------------
     def build_event(
         self,

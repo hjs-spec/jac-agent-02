@@ -19,7 +19,7 @@ def test_chain_extension_shape():
 
 
 def test_attach_extension_uses_jep_ext_and_ext_crit():
-    event = {"jep": "1", "verb": "J", "sig": "demo"}
+    event = {"jep": "1", "verb": "J"}
     ext = make_chain_extension(None, "chain-root", "chain-root")
     out = attach_jac_chain_extension(event, ext)
     assert JAC_CHAIN_EXT in out["ext"]
@@ -40,14 +40,11 @@ def test_validator_accepts_chain_root():
 
 
 def test_validator_rejects_missing_parent_for_non_root():
-    event = make_jep_like_event(
-        verb="J",
-        who="did:example:agent-789",
-        what="sha256:" + "a" * 64,
-        based_on=None,
-        based_on_type="jep-event",
-        relation="derived-from",
-    )
+    event = {
+        "ext": {
+            JAC_CHAIN_EXT: {"based_on_type": "jep-event", "relation": "derived-from"}
+        }
+    }
     result = JACChainValidator().validate_event(event)
     assert result["valid"] is False
     assert result["errors"][0]["code"] == "ERR_JAC_PARENT_MISSING"

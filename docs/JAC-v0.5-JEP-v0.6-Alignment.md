@@ -56,7 +56,7 @@ Implemented:
 - chain root and declared break examples.
 - chain fragment schema.
 - chain validation result schema.
-- basic chain validator seed.
+- schema-backed declaration validator with explicit verification scope.
 - examples and tests.
 
 Not yet complete:
@@ -70,7 +70,7 @@ Not yet complete:
 
 ## Boundary statements
 
-A valid JAC chain means that dependency links were declared and structurally validated.
+A successful result from this seed means only that JAC declarations were structurally validated. Referenced parent objects are not resolved or authenticated by this validator.
 
 It does not prove:
 
@@ -88,3 +88,18 @@ JEP v0.6 = stable event core
 HJS v0.5 = receipt / archive / evidence lifecycle companion layer
 JAC v0.5 = declared dependency chain companion layer
 ```
+
+## Current implementation corrections
+
+Default hashing uses RFC 8785. Exported fragments identify the canonicalization
+and own copied snapshots. Historical sorted-JSON hashes require the explicit
+`json-sorted-v1` compatibility mode; examples, reports and signatures are not
+rewritten. Extension attachment rejects already signed events and never mutates
+caller data. Schema validation includes optional fields and invalid container
+types, and a declared break may omit its unavailable parent.
+
+Root and break declarations require matching type/relation values; a root may
+not simultaneously carry a parent. Non-root, non-break declarations require a
+well-formed digest. These are structural consistency checks, not assertions
+about external truth. A critical JAC extension needs an implementing consumer;
+Core-only rejection of an unknown critical extension is expected.

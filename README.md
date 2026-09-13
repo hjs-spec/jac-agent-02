@@ -64,6 +64,42 @@ JAC v0.5 aligns dependency declarations with the JEP extension framework:
 - JAC/JEP alignment documentation
 - release notes
 
+## Hashing, mutation and validation behavior
+
+- New event and fragment hashes use RFC 8785 (`rfc8785`), including number
+  rendering and UTF-16 property ordering. `export_chain_fragment` records
+  `canonicalization: "rfc8785"` and copies the supplied events.
+- Attach extensions **before signing**. `attach_jac_chain_extension` copies
+  both inputs, rejects an existing real `sig`, and refuses to overwrite a JAC
+  declaration. To change a signed event, explicitly build and sign a new event;
+  its event hash and dependent references change.
+- Extension validation applies the checked-in schema, digest shapes, container
+  types and root/break consistency. Declared breaks may omit an unavailable
+  parent. Empty fragments and malformed input fail without crashing.
+- Results report `jac_extension_structure`. `valid` does not mean a signature,
+  parent object, authority or complete log was verified. A caller's
+  `observed_log_assumption: "complete"` remains a declaration, not evidence.
+- `make_jep_like_event` is an unsigned demo helper with a fresh nonce. Its
+  `UNSIGNED-DEMO` output must not be submitted as a signed Core event.
+- Critical JAC declarations require a consumer with a JAC extension handler.
+  A Core-only verifier, including the current baseline API, correctly rejects
+  this unknown critical extension. Use `critical=False` only when your
+  application explicitly permits the declaration to be ignored; that is not
+  JAC verification.
+
+### Historical data
+
+Existing examples and reports retain their original bytes and placeholder
+signatures. Hashes previously produced with sorted Python JSON may differ
+from RFC 8785 for numbers and Unicode property names. Read old exports with
+`verify_fragment_hash(fragment, canonicalization="json-sorted-v1")`; there is
+no automatic fallback or rewrite. `legacy_digest` is provided only to reproduce
+old references. Hash verification alone does not validate the chain.
+
+`jac_agent_trace.py` remains an explicitly historical prototype with its old
+serialization intact. Use `jac_v05.py` for current declarations. The JAC wire
+version remains `0.5`; no new protocol version is claimed.
+
 ## Status
 
 This is an implementation seed aligned with the core architecture of `draft-wang-jac-02`.
@@ -79,7 +115,8 @@ python jac_v05.py
 ## Run tests
 
 ```bash
-python -m pytest -q tests_jac_v05.py
+pip install -r requirements.txt
+python -m pytest -q
 ```
 
 ## Public drafts
