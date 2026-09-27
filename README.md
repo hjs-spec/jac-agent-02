@@ -1,8 +1,10 @@
 # JAC v0.5 — JEP/HJS Declared Dependency Chain Implementation Seed
 
-JAC v0.5 is a JEP v0.6 and HJS v0.5 compatible implementation seed for declared dependency chains.
+JAC v0.5 is a declared dependency-chain implementation seed developed against JEP v0.6 and HJS v0.5. Those are its historical alignment targets, not a claim that its demo events conform to current JEP Core 0.7.
 
-It aligns with:
+For current signed events, start with [JEP Core](https://github.com/hjs-spec/jep-core) and the [integration directory](https://github.com/hjs-spec/.github/blob/main/PROJECTS.md#integrate). This repository checks JAC declarations and fragment integrity; it does not replace Core event validation or provide an automatic format bridge.
+
+Historical alignment targets:
 
 - `draft-wang-jac-02`
 - `draft-wang-jep-judgment-event-protocol-06`
