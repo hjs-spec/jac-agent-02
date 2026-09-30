@@ -10,32 +10,12 @@ Historical alignment targets:
 - `draft-wang-jep-judgment-event-protocol-06`
 - `draft-wang-hjs-accountability-05`
 
-## Positioning
+JAC adds declared dependency links over JEP events and HJS objects. Core owns
+event structure, signatures and validation requirements.
 
-JAC is a companion chain-composition layer over JEP and HJS.
+## Chain extension
 
-```text
-JEP = atomic signed judgment events
-HJS = accountability receipts, archive/privacy/evidence lifecycle
-JAC = declared dependency chains over JEP/HJS objects
-```
-
-JAC v0.5 does not redefine JEP-Core:
-
-- event object semantics;
-- J/D/T/V verbs;
-- event hash semantics;
-- detached JWS over JCS;
-- key resolution;
-- validation modes;
-- `ext` / `ext_crit` extension framework;
-- failure-code semantics.
-
-## What changed from the earlier implementation
-
-The earlier implementation used top-level `task_based_on` and `extensions` fields.
-
-JAC v0.5 aligns dependency declarations with the JEP extension framework:
+JAC v0.5 uses the JEP extension framework:
 
 ```json
 {
@@ -50,7 +30,7 @@ JAC v0.5 aligns dependency declarations with the JEP extension framework:
 }
 ```
 
-## Added in v0.5
+## Included tools
 
 - JAC chain extension builder
 - JAC chain validator seed
@@ -102,22 +82,16 @@ old references. Hash verification alone does not validate the chain.
 serialization intact. Use `jac_v05.py` for current declarations. The JAC wire
 version remains `0.5`; no new protocol version is claimed.
 
-## Status
-
-This is an implementation seed aligned with the core architecture of `draft-wang-jac-02`.
-
-It does not yet claim full production conformance or complete coverage of all optional JAC deployment profiles.
-
 ## Quick example
 
 ```bash
+pip install -r requirements.txt
 python jac_v05.py
 ```
 
 ## Run tests
 
 ```bash
-pip install -r requirements.txt
 python -m pytest -q
 ```
 
