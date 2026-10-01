@@ -2,6 +2,11 @@
 
 This document describes how JAC v0.5 aligns with JEP v0.6 and HJS v0.5.
 
+These are historical alignment targets. For current operations, use the
+[repository guide](../README.md). The original inputs were
+`draft-wang-jac-02`, `draft-wang-jep-judgment-event-protocol-06` and
+`draft-wang-hjs-accountability-05`.
+
 ## Scope
 
 JAC v0.5 is a declared dependency chain companion layer.
@@ -103,3 +108,17 @@ not simultaneously carry a parent. Non-root, non-break declarations require a
 well-formed digest. These are structural consistency checks, not assertions
 about external truth. A critical JAC extension needs an implementing consumer;
 Core-only rejection of an unknown critical extension is expected.
+
+## Reading historical exports
+
+Existing examples and reports retain their original bytes and placeholder
+signatures. Hashes previously produced with sorted Python JSON may differ
+from RFC 8785 for numbers and Unicode property names. Read old exports with
+`verify_fragment_hash(fragment, canonicalization="json-sorted-v1")`; there is
+no automatic fallback or rewrite. `legacy_digest` is provided only to reproduce
+old references. Hash verification alone does not validate the chain.
+
+`jac_agent_trace.py` is a historical prototype with its original serialization.
+The unsigned demo helper in `jac_v05.py` retains its fixture fields, including
+`nonce`; its output does not claim Core 0.7 conformance. JAC's wire version is
+`0.5`.
