@@ -1,17 +1,25 @@
-# JAC v0.5 — JEP/HJS Declared Dependency Chain Implementation Seed
+# JAC v0.5 — Declared Dependency Chains
 
-JAC v0.5 is a declared dependency-chain implementation seed developed against JEP v0.6 and HJS v0.5. Those are its historical alignment targets, not a claim that its demo events conform to current JEP Core 0.7.
+Build declared dependency links, validate their structure and export chain fragments.
+Use `jac_v05.py` for these operations.
 
-For current signed events, start with [JEP Core](https://github.com/hjs-spec/jep-core) and the [integration directory](https://github.com/hjs-spec/.github/blob/main/PROJECTS.md#integrate). This repository checks JAC declarations and fragment integrity; it does not replace Core event validation or provide an automatic format bridge.
+Checks cover declarations and fragment hashes. Signatures, referenced objects,
+authority and log completeness require separate verification. To create or verify
+signed events, start with [JEP Core](https://github.com/hjs-spec/jep-core).
 
-Historical alignment targets:
+## Try the example
 
-- `draft-wang-jac-02`
-- `draft-wang-jep-judgment-event-protocol-06`
-- `draft-wang-hjs-accountability-05`
+Use Python 3.11 in your development environment:
 
-JAC adds declared dependency links over JEP events and HJS objects. Core owns
-event structure, signatures and validation requirements.
+```bash
+git clone https://github.com/hjs-spec/jac-agent-02.git
+cd jac-agent-02
+python -m pip install -r requirements.txt
+python jac_v05.py
+```
+
+The command prints a three-event fragment and its declaration-validation results.
+The example events are unsigned; they are not signed Core 0.7 events.
 
 ## Chain extension
 
@@ -30,21 +38,14 @@ JAC v0.5 uses the JEP extension framework:
 }
 ```
 
-## Included tools
+## Use in your code
 
-- JAC chain extension builder
-- JAC chain validator seed
-- JEP-compatible `ext` / `ext_crit` usage
-- `based_on`, `based_on_type`, and `relation` fields
-- declared chain root support
-- declared break support
-- observed-log assumption field
-- chain fragment export
-- schemas
-- examples
-- tests
-- JAC/JEP alignment documentation
-- release notes
+| Task | Entry in `jac_v05.py` |
+|---|---|
+| Attach a declared link before signing | `attach_jac_chain_extension` |
+| Check declarations | `JACChainValidator` |
+| Export a copied event fragment | `export_chain_fragment` |
+| Check a fragment's hash binding | `verify_fragment_hash` |
 
 ## Hashing, mutation and validation behavior
 
@@ -61,33 +62,13 @@ JAC v0.5 uses the JEP extension framework:
 - Results report `jac_extension_structure`. `valid` does not mean a signature,
   parent object, authority or complete log was verified. A caller's
   `observed_log_assumption: "complete"` remains a declaration, not evidence.
-- `make_jep_like_event` is an unsigned demo helper with a fresh nonce. Its
+- `make_jep_like_event` is an unsigned demo helper. Its
   `UNSIGNED-DEMO` output must not be submitted as a signed Core event.
 - Critical JAC declarations require a consumer with a JAC extension handler.
   A Core-only verifier, including the current baseline API, correctly rejects
   this unknown critical extension. Use `critical=False` only when your
   application explicitly permits the declaration to be ignored; that is not
   JAC verification.
-
-### Historical data
-
-Existing examples and reports retain their original bytes and placeholder
-signatures. Hashes previously produced with sorted Python JSON may differ
-from RFC 8785 for numbers and Unicode property names. Read old exports with
-`verify_fragment_hash(fragment, canonicalization="json-sorted-v1")`; there is
-no automatic fallback or rewrite. `legacy_digest` is provided only to reproduce
-old references. Hash verification alone does not validate the chain.
-
-`jac_agent_trace.py` remains an explicitly historical prototype with its old
-serialization intact. Use `jac_v05.py` for current declarations. The JAC wire
-version remains `0.5`; no new protocol version is claimed.
-
-## Quick example
-
-```bash
-pip install -r requirements.txt
-python jac_v05.py
-```
 
 ## Run tests
 
@@ -99,4 +80,3 @@ python -m pytest -q
 
 - JAC: https://datatracker.ietf.org/doc/draft-wang-jac/
 - JEP-Core: https://datatracker.ietf.org/doc/draft-wang-jep-judgment-event-protocol/
-- HJS: https://datatracker.ietf.org/doc/draft-wang-hjs-accountability/
